@@ -43,6 +43,8 @@ class WeNoteDemoPrecompiled : public dev::blockverifier::Precompiled
     bytes getCreditId(
         const Address& _origin,
         std::shared_ptr<dev::blockverifier::ExecutiveContext> _context);
+    bytes viewCreditId(
+        std::shared_ptr<dev::blockverifier::ExecutiveContext> _context);
     bytes queryCredit(
         const std::string& _credit_commitment,
         std::shared_ptr<dev::blockverifier::ExecutiveContext> _context);
@@ -92,6 +94,7 @@ class WeNoteDemoPrecompiled : public dev::blockverifier::Precompiled
         const std::string& _credit_commitment,
         const std::string& _credit_id,
         const std::string& _issuer_info,
+        const std::string& _proof_of_knowledge,
         const std::string& _transaction_time,
         const std::string& _encrypted_owner_info,
         const std::string& _recovery_info,
@@ -158,6 +161,14 @@ class WeNoteDemoPrecompiled : public dev::blockverifier::Precompiled
         const std::string& _credit_id,
         const Address& _origin,
         dev::storage::Table::Ptr _table);
+    void verifyIssuerInfo(
+        const std::string& _issuer_info);
+    void verifyIssuerInfo2(
+        const std::string& _issuer_info,
+        const Address& _origin);
+    void verifyProofOfKnowledge(
+        const std::string& _credit_commitment,
+        const std::string& _proof_of_knowledge);
     void throwException(const std::string& msg);
 
     dev::eth::ContractABI m_abi;

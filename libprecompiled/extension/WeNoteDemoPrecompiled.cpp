@@ -32,9 +32,10 @@ using namespace dev::precompiled;
 using namespace dev::storage;
 
 /*
-contract WeNoteDemo {
-    function init() public;
-    function getCreditId() returns(string) public;
+contract WeNoteDemoPrecompiled {
+    function init();
+    function getCreditId() public returns(string);
+	function viewCreditId() public view returns(string);
 
     function queryCredit(string credit_commitment) public view returns(uint256);
     function queryCredit2(
@@ -45,13 +46,13 @@ contract WeNoteDemo {
         string credit_id,
         string issuer_info,
         string transaction_time,
-        string encrypted_transaction_info) public;
+        string encrypted_transaction_info);
 
     function fulfillCredit(
             string credit_commitment,
             string credit_id,
             string transaction_time,
-            string encrypted_transaction_info) public;
+            string encrypted_transaction_info);
 
     function transferCredit(
             string credit_commitment_1,
@@ -60,7 +61,7 @@ contract WeNoteDemo {
             string credit_id_2,
             string issuer_info_2,
             string transaction_time,
-            string encrypted_transaction_info) public;
+            string encrypted_transaction_info);
 
     function splitCredit(
             string credit_commitment_1,
@@ -72,15 +73,16 @@ contract WeNoteDemo {
             string credit_id_3,
             string issuer_info_3,
             string transaction_time,
-            string encrypted_transaction_info) public;
+            string encrypted_transaction_info);
 
     function verifyAndSecureCredit(
             string credit_commitment,
             string credit_id,
             string issuer_info,
+			string proof_of_knowledge,
             string transaction_time,
             string encrypted_owner_info,
-            string recovery_info) public;
+            string recovery_info);
 }
 */
 
@@ -89,6 +91,7 @@ namespace
 // API signature list.
 const char API_INIT[] = "init()";
 const char API_GET_CREDIT_ID[] = "getCreditId()";
+const char API_VIEW_CREDIT_ID[] = "viewCreditId()";
 const char API_QUERY_CREDIT[] = "queryCredit(string)";
 const char API_QUERY_CREDIT2[] = "queryCredit2(string,string)";
 const char API_ISSUE_CREDIT[] = "issueCredit(string,string,string,string,string)";
@@ -98,7 +101,7 @@ const char API_TRANSFER_CREDIT[] =
 const char API_SPLIT_CREDIT[] =
     "splitCredit(string,string,string,string,string,string,string,string,string,string)";
 const char API_VERIFY_AND_SECURE_CREDIT[] =
-    "verifyAndSecureCredit(string,string,string,string,string,string)";
+    "verifyAndSecureCredit(string,string,string,string,string,string,string)";
 
 // Table spec list.
 const char TABLE_UNSPENT[] = "_ext_wn_unspent_";
@@ -169,6 +172,7 @@ WeNoteDemoPrecompiled::WeNoteDemoPrecompiled()
 {
     name2Selector[API_INIT] = getFuncSelector(API_INIT);
     name2Selector[API_GET_CREDIT_ID] = getFuncSelector(API_GET_CREDIT_ID);
+    name2Selector[API_VIEW_CREDIT_ID] = getFuncSelector(API_VIEW_CREDIT_ID);
     name2Selector[API_QUERY_CREDIT] = getFuncSelector(API_QUERY_CREDIT);
     name2Selector[API_QUERY_CREDIT2] = getFuncSelector(API_QUERY_CREDIT2);
     name2Selector[API_ISSUE_CREDIT] = getFuncSelector(API_ISSUE_CREDIT);
@@ -193,6 +197,10 @@ bytes WeNoteDemoPrecompiled::call(dev::blockverifier::ExecutiveContext::Ptr _con
     else if (func == name2Selector[API_GET_CREDIT_ID])
     {
         out = getCreditId(_origin, _context);
+    }
+    else if (func == name2Selector[API_VIEW_CREDIT_ID])
+    {
+        out = viewCreditId(_context);
     }
     else if (func == name2Selector[API_QUERY_CREDIT])
     {
@@ -299,15 +307,17 @@ bytes WeNoteDemoPrecompiled::call(dev::blockverifier::ExecutiveContext::Ptr _con
         std::string credit_commitment;
         std::string credit_id;
         std::string issuer_info;
+        std::string proof_of_knowledge;
         std::string transaction_time;
         std::string encrypted_owner_info;
         std::string recovery_info;
-        m_abi.abiOut(data, credit_commitment, credit_id, issuer_info,
+        m_abi.abiOut(data, credit_commitment, credit_id, issuer_info, proof_of_knowledge,
                      transaction_time, encrypted_owner_info, recovery_info);
         verifyAndSecureCredit(
             credit_commitment,
             credit_id,
             issuer_info,
+            proof_of_knowledge,
             transaction_time,
             encrypted_owner_info,
             recovery_info,
@@ -374,6 +384,17 @@ bytes WeNoteDemoPrecompiled::getCreditId(
     return GET_OUTPUT(next_credit_id_str);
 }
 
+bytes WeNoteDemoPrecompiled::viewCreditId(
+    std::shared_ptr<dev::blockverifier::ExecutiveContext> _context)
+{
+    Table::Ptr table = openTableOrDie(TABLE_CONFIG, _context);
+    auto entries = table->select(CONFIG_NEXT_CREDIT_ID, table->newCondition());
+    if (entries->size() != 1) {
+        throwException("Invalid internal status for CreditId.");
+    }
+    return GET_OUTPUT(entries->get(0)->getField(FIELD_CONFIG_VALUE));
+}
+
 bytes WeNoteDemoPrecompiled::queryCredit(
     const std::string& _credit_commitment,
     std::shared_ptr<dev::blockverifier::ExecutiveContext> _context)
@@ -415,7 +436,7 @@ void WeNoteDemoPrecompiled::issueCredit(
     const Address& _origin,
     std::shared_ptr<dev::blockverifier::ExecutiveContext> _context)
 {
-    // TODO: Verify the signature in _issuer_info.
+    verifyIssuerInfo2(_issuer_info, _origin);
 
     Table::Ptr table;
     // Add record to t_unspent.
@@ -443,8 +464,11 @@ void WeNoteDemoPrecompiled::fulfillCredit(
     Table::Ptr table;
     // Delete old credit.
     table = openTableOrDie(TABLE_UNSPENT, _context);
-    // TODO: Verify the signature in fetched _issuer_info.
-    deleteExactlyOneCreditRecord(_credit_commitment, _credit_id, _origin, table);
+
+    auto entries = fetchExactlyOneWithCommitmentAndId(_credit_commitment, _credit_id, table);
+    // This credit must be signed by the bank of _origin.
+    verifyIssuerInfo2(entries->get(0)->getField(FIELD_ISSUER_INFO), _origin);
+    deleteCreditRecord(_credit_commitment, _credit_id, _origin, table);
 
     // Add record to t_spent.
     table = openTableOrDie(TABLE_SPENT, _context);
@@ -471,7 +495,8 @@ void WeNoteDemoPrecompiled::transferCredit(
     const Address& _origin,
     std::shared_ptr<dev::blockverifier::ExecutiveContext> _context)
 {
-    // TODO: Verify the signature in fetched _issuer_info_2.
+    verifyIssuerInfo(_issuer_info_2);
+
     Table::Ptr table;
     // Delete old credit.
     table = openTableOrDie(TABLE_UNSPENT, _context);
@@ -507,8 +532,9 @@ void WeNoteDemoPrecompiled::splitCredit(
     const Address& _origin,
     std::shared_ptr<dev::blockverifier::ExecutiveContext> _context)
 {
-    // TODO: Verify the signature in fetched _issuer_info_2.
-    // TODO: Verify the signature in fetched _issuer_info_3.
+    verifyIssuerInfo(_issuer_info_2);
+    verifyIssuerInfo(_issuer_info_3);
+
     Table::Ptr table;
     // Delete old credit.
     table = openTableOrDie(TABLE_UNSPENT, _context);
@@ -536,13 +562,15 @@ void WeNoteDemoPrecompiled::verifyAndSecureCredit(
     const std::string& _credit_commitment,
     const std::string& _credit_id,
     const std::string& _issuer_info,
+    const std::string& _proof_of_knowledge,
     const std::string& _transaction_time,
     const std::string& _encrypted_owner_info,
     const std::string& _recovery_info,
     const Address& _origin,
     std::shared_ptr<dev::blockverifier::ExecutiveContext> _context)
 {
-    // TODO: Need proof of knowledge to secure the credit.
+    verifyProofOfKnowledge(_credit_commitment, _proof_of_knowledge);
+
     Table::Ptr table;
 
     // Check the presence of credit_commitment.
@@ -740,6 +768,33 @@ void WeNoteDemoPrecompiled::deleteRecoveryInfo(
         throwException("Failed to delete recovery info.");
     }
     logError("deleteRecoveryInfo", "Deleted recovery infos.");
+}
+
+void WeNoteDemoPrecompiled::verifyIssuerInfo(const std::string& _issuer_info) {
+    // TODO: Make it real.
+    if (_issuer_info.empty()) {
+        throwException("Invalid issuer info.");
+    }
+}
+
+void WeNoteDemoPrecompiled::verifyIssuerInfo2(
+    const std::string& _issuer_info,
+    const Address& _origin)
+{
+    // TODO: Make it real.
+    if (_issuer_info.empty() || _origin.asBytes().empty()) {
+        throwException("Invalid issuer info for corresponding origin.");
+    }
+}
+
+void WeNoteDemoPrecompiled::verifyProofOfKnowledge(
+    const std::string& _credit_commitment,
+    const std::string& _proof_of_knowledge)
+{
+    // TODO: Make it real.
+    if (_credit_commitment.empty() || _proof_of_knowledge.empty()) {
+        throwException("Invalid proof of knowledge.");
+    }
 }
 
 void WeNoteDemoPrecompiled::throwException(const std::string& msg) {
