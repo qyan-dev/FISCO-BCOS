@@ -19,7 +19,7 @@
  *  @date 2019
  */
 #include "WeNoteDemoPrecompiled.h"
-#include "../precompile.h"
+#include "../RustUtil.h"
 #include <libblockverifier/ExecutiveContext.h>
 #include <libdevcore/easylog.h>
 #include <libethcore/ABI.h>
@@ -715,36 +715,16 @@ void WeNoteDemoPrecompiled::verifyIssuerInfo2(
 void WeNoteDemoPrecompiled::verifyProofOfKnowledge(
     const std::string& _credit_commitment, const std::string& _proof_of_knowledge)
 {
-    // TODO: Make it real.
     if (_credit_commitment.empty() || _proof_of_knowledge.empty())
     {
         throwException("Invalid proof of knowledge.");
     }
-    // #ifdef __cplusplus
-    // extern "C"
-    // {
-    // #endif
-    std::string s_z0 = "fe53d15388639fc8e07a6a81d5c62412b5d828d66fd5412309f31f9ab13b8d05";
-    char* z0 = new char[s_z0.length() + 1];
-    strcpy(z0, s_z0.c_str());
-    std::string s_z1 = "0b3fe249c7624a8a1f699e2ad4606112f9c90541c5e8f8a26d3391a820033409";
-    char* z1 = new char[s_z1.length() + 1];
-    strcpy(z1, s_z1.c_str());
-    std::string s_z2 = "c6a02bc3528e70d6bf8105dcb63257ee3f75b53c2b9d935cfb85c3cae7777607";
-    char* z2 = new char[s_z2.length() + 1];
-    strcpy(z2, s_z2.c_str());
-    std::string s_cc = "de899dfb10dc0e1f1ecf93cf53fec4ea1081b66dbbfe4164ea4f80eaf1a7343e";
-    char* cc = new char[s_cc.length() + 1];
-    strcpy(cc, s_cc.c_str());
-    std::string s_tx_time = "good!";
-    char* tx_time = new char[s_tx_time.length() + 1];
-    strcpy(tx_time, s_tx_time.c_str());
-    char* result = knowledge_verify(z0, z1, z2, cc, tx_time);
-    printf("now result is %s\n", result);
-    // delete [] z0;
-    // #ifdef __cplusplus
-    // }
-    // #endif
+
+    int result = verify_knowledge(_proof_of_knowledge.c_str(), _credit_commitment.c_str());
+    if (result == 0) {
+        throwException("Failed to verify credit knowledge.");
+    }
+    logError("verifyProofOfKnowledge", "Verified credit knowledge.");
 }
 
 void WeNoteDemoPrecompiled::throwException(const std::string& msg)
