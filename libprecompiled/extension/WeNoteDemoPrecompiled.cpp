@@ -720,7 +720,7 @@ void WeNoteDemoPrecompiled::verifyProofOfKnowledge(
         throwException("Invalid proof of knowledge.");
     }
 
-    int result = verify_knowledge(_proof_of_knowledge.c_str(), _credit_commitment.c_str());
+    int result = verify_knowledge(_credit_commitment.c_str(), _proof_of_knowledge.c_str());
     if (result == 0) {
         throwException("Failed to verify credit knowledge.");
     }
